@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import Icon from "@/components/ui/icon";
+import GameScreen from "@/components/GameScreen";
 
 const HERO_IMAGE = "https://cdn.poehali.dev/projects/75b4526e-aa6b-4abe-93b6-626aa7a72949/files/46d29280-e116-48bc-9990-4938452da2f5.jpg";
 const AMULET_IMAGE = "https://cdn.poehali.dev/projects/75b4526e-aa6b-4abe-93b6-626aa7a72949/files/dee5a8e9-a7fa-4016-a829-fe2cd5203573.jpg";
@@ -155,7 +156,7 @@ function HomePage({ onNav }: { onNav: (p: Page) => void }) {
   );
 }
 
-function LevelsPage() {
+function LevelsPage({ onPlay }: { onPlay: (name: string, num: number) => void }) {
   const [selected, setSelected] = useState<number | null>(null);
   const worlds = [
     { name: "Мистический лес", levels: 10, cleared: 7, color: "#2ecc71", icon: "🌿" },
@@ -166,7 +167,7 @@ function LevelsPage() {
     <div className="space-y-4">
       <div className="animate-fade-in-up">
         <h2 className="font-cinzel text-xl font-bold text-gold-gradient mb-1">Карта Миров</h2>
-        <p className="font-cormorant text-sm" style={{ color: "rgba(212,175,55,0.5)" }}>Исследуй магические земли</p>
+        <p className="font-cormorant text-sm" style={{ color: "rgba(212,175,55,0.5)" }}>Нажми на уровень чтобы играть</p>
       </div>
       {worlds.map((world, wi) => (
         <div key={wi} className={`magic-card rounded-2xl p-4 animate-fade-in-up stagger-${wi + 1} opacity-0-init ${world.locked ? "opacity-50" : ""}`}>
@@ -191,15 +192,19 @@ function LevelsPage() {
             {Array.from({ length: world.levels }, (_, i) => {
               const done = i < world.cleared;
               const current = i === world.cleared && !world.locked;
+              const playable = !world.locked && i <= world.cleared;
               return (
-                <button key={i} disabled={world.locked || i > world.cleared}
-                  onClick={() => setSelected(wi * 10 + i)}
-                  className="aspect-square rounded-lg flex items-center justify-center text-xs font-cinzel font-bold transition-all"
+                <button key={i} disabled={!playable}
+                  onClick={() => {
+                    setSelected(wi * 10 + i);
+                    if (playable) onPlay(world.name, wi * 10 + i + 1);
+                  }}
+                  className="aspect-square rounded-lg flex items-center justify-center text-xs font-cinzel font-bold transition-all active:scale-95"
                   style={{
                     background: done ? `${world.color}22` : "rgba(26,13,46,0.6)",
                     border: `1px solid ${done ? world.color : current ? "rgba(212,175,55,0.5)" : "rgba(155,93,229,0.15)"}`,
                     color: done ? world.color : current ? "#FFD700" : "rgba(150,130,180,0.3)",
-                    transform: selected === wi * 10 + i ? "scale(1.1)" : "scale(1)",
+                    transform: selected === wi * 10 + i ? "scale(1.08)" : "scale(1)",
                   }}
                 >{done ? "★" : current ? "▶" : i + 1}</button>
               );
@@ -476,12 +481,13 @@ function AchievementsPage() {
 
 export default function App() {
   const [page, setPage] = useState<Page>("home");
+  const [activeGame, setActiveGame] = useState<{ name: string; num: number } | null>(null);
   useEffect(() => { window.scrollTo({ top: 0, behavior: "smooth" }); }, [page]);
 
   const renderPage = () => {
     switch (page) {
       case "home": return <HomePage onNav={setPage} />;
-      case "levels": return <LevelsPage />;
+      case "levels": return <LevelsPage onPlay={(name, num) => setActiveGame({ name, num })} />;
       case "workshop": return <WorkshopPage />;
       case "amulets": return <AmuletsPage />;
       case "profile": return <ProfilePage />;
@@ -496,6 +502,13 @@ export default function App() {
       <Header gold={12500} gems={340} level={42} />
       <main className="relative z-10 pt-16 pb-24 px-4 max-w-md mx-auto">{renderPage()}</main>
       <BottomNav active={page} onNav={setPage} />
+      {activeGame && (
+        <GameScreen
+          levelName={activeGame.name}
+          levelNum={activeGame.num}
+          onBack={() => setActiveGame(null)}
+        />
+      )}
     </div>
   );
 }
