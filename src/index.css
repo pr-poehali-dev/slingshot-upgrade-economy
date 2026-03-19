@@ -362,3 +362,29 @@
 .opacity-0-init {
   opacity: 0;
 }
+
+/* ── Fog cloud animation ── */
+@keyframes fog-drift {
+  0% {
+    transform: translateX(0px) translateY(0px) scaleX(1);
+  }
+  25% {
+    transform: translateX(28px) translateY(-8px) scaleX(1.06);
+  }
+  50% {
+    transform: translateX(14px) translateY(10px) scaleX(0.97);
+  }
+  75% {
+    transform: translateX(-18px) translateY(4px) scaleX(1.04);
+  }
+  100% {
+    transform: translateX(0px) translateY(0px) scaleX(1);
+  }
+}
+
+.fog-cloud {
+  animation-name: fog-drift;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
