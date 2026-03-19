@@ -229,6 +229,12 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
   // Vortex / freeze
   const [frozen, setFrozen] = useState(false);
 
+  // Intro camera: animate from top to bottom, then lock to last 7 rows
+  const VISIBLE_LOCKED = 7;
+  const [cameraRow, setCameraRow] = useState(0);           // which row is at top of view
+  const [introPhase, setIntroPhase] = useState<"scrolling"|"done">("scrolling");
+  const introRef = useRef<ReturnType<typeof setTimeout>>();
+
   // Refs for animation loop
   const flyingRef   = useRef<FlyingBall|null>(null);
   const ballsRef    = useRef<Ball[]>(balls);
@@ -260,6 +266,27 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
     const upd = () => { if (fieldRef.current) setFieldSize({w:fieldRef.current.clientWidth,h:fieldRef.current.clientHeight}); };
     upd(); window.addEventListener("resize",upd); return ()=>window.removeEventListener("resize",upd);
   }, []);
+
+  // Intro camera scroll: triggered on mount and on reset
+  const [introKey, setIntroKey] = useState(0);
+  useEffect(() => {
+    setCameraRow(0);
+    setIntroPhase("scrolling");
+    const targetRow = TOTAL_ROWS - VISIBLE_LOCKED;
+    const stepMs = 2400 / targetRow;
+    let current = 0;
+    const tick = () => {
+      current++;
+      setCameraRow(current);
+      if (current < targetRow) {
+        introRef.current = setTimeout(tick, stepMs);
+      } else {
+        setIntroPhase("done");
+      }
+    };
+    introRef.current = setTimeout(tick, stepMs);
+    return () => { if (introRef.current) clearTimeout(introRef.current); };
+  }, [introKey]);
 
   // FOG: toggle every 30s, active for 15s
   useEffect(() => {
@@ -626,14 +653,14 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
 
   // ── Aim & Shoot ──
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (flyingRef.current||gameOver||win) return;
+    if (flyingRef.current||gameOver||win||introPhase==="scrolling") return;
     const rect=fieldRef.current!.getBoundingClientRect();
     const cx=fieldSize.w/2, cy=fieldSize.h-60;
     setAimAngle(Math.atan2(e.clientY-rect.top-cy, e.clientX-rect.left-cx));
   };
 
   const handleShoot = (e: React.PointerEvent) => {
-    if (flyingRef.current||gameOver||win||queue.length===0) return;
+    if (flyingRef.current||gameOver||win||queue.length===0||introPhase==="scrolling") return;
     const rect=fieldRef.current!.getBoundingClientRect();
     const cx=fieldSize.w/2, cy=fieldSize.h-60;
     const my=e.clientY-rect.top;
@@ -656,6 +683,7 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
     setQueue(Array.from({length:5},()=>Math.floor(Math.random()*BALL_COLORS.length)));
     setActiveBonuses([]); setBonusInventory([]); setShielded(false); setFrozen(false);
     setTwinPending(false); setSwapChoices(null);
+    setIntroKey(k => k + 1);
   };
 
   // ─── Derived ──────────────────────────────────────────────────────────────
@@ -666,11 +694,18 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
   const isMirrored   = hasMod("mirrored_walls");
   const isPrecision  = hasBonus("precision");
 
-  const aimPts = aimAngle!==null&&!flyingBall
+  // During intro: use cameraRow as negative offset so field scrolls top→bottom
+  // After intro: use descent (gameplay offset) anchored to last VISIBLE_LOCKED rows
+  const lockedStart  = TOTAL_ROWS - VISIBLE_LOCKED; // row that should be at top when locked
+  const viewOffset   = introPhase === "scrolling"
+    ? -cameraRow                        // scroll: show rows starting from 0 down to lockedStart
+    : descent - lockedStart;            // gameplay: keep bottom 7 rows in view
+
+  const aimPts = aimAngle!==null&&!flyingBall&&introPhase==="done"
     ? computeAimLine(w/2,h-60,aimAngle,w,isPrecision)
     : [];
 
-  const fogActive = isFog && !(fogReveal && fogReveal.until>Date.now()) && !(hasBonus("clarity"));
+  const fogActive = introPhase==="done" && isFog && !(fogReveal && fogReveal.until>Date.now()) && !(hasBonus("clarity"));
   const sideGravDir = (modifiers.find(m=>m.type==="side_gravity") as {type:"side_gravity";dir:"left"|"right"}|undefined)?.dir;
 
   return (
@@ -804,9 +839,19 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
           })()}
         </svg>
 
+        {/* Intro overlay: show "Начинаем!" during scroll */}
+        {introPhase==="scrolling"&&(
+          <div className="absolute inset-x-0 bottom-16 flex justify-center pointer-events-none" style={{zIndex:30}}>
+            <div className="font-cinzel text-sm px-4 py-2 rounded-full animate-pulse"
+              style={{background:"rgba(26,13,46,0.85)",border:"1px solid rgba(212,175,55,0.4)",color:"#FFD700",letterSpacing:"0.12em"}}>
+              ✦ ОБЗОР ПОЛЯ ✦
+            </div>
+          </div>
+        )}
+
         {/* Grid balls */}
         {aliveBalls.map(ball=>{
-          const {x,y}=getBallCenter(ball.row,ball.col,w,descent);
+          const {x,y}=getBallCenter(ball.row,ball.col,w,viewOffset);
           if (y>h+BALL_RADIUS*2||y<-BALL_RADIUS) return null;
           const c=BALL_COLORS[ball.colorIdx];
           const r=ball.shrunken?BALL_RADIUS*0.65:BALL_RADIUS;
