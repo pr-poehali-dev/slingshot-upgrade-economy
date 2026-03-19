@@ -195,19 +195,29 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
 
   const snapAndExplode = useCallback((fb: FlyingBall, currentBalls: Ball[]) => {
     const { w } = fieldSize;
+    const occupiedSet = new Set(currentBalls.filter(b => b.alive).map(b => `${b.row}-${b.col}`));
+
+    // Collect candidate cells: neighbors of existing balls + top row
+    const candidates = new Set<string>();
+    for (let c = 0; c < COLS; c++) candidates.add(`0-${c}`);
+    for (const b of currentBalls) {
+      if (!b.alive) continue;
+      for (const n of getNeighbors(b.row, b.col, COLS)) {
+        const key = `${n.row}-${n.col}`;
+        if (!occupiedSet.has(key) && n.row >= 0) candidates.add(key);
+      }
+    }
+
     let bestRow = -1, bestCol = -1, bestDist = Infinity;
-    // Try to find snap position
-    for (let r = 0; r < ROWS_VISIBLE + 2; r++) {
-      for (let c = 0; c < COLS; c++) {
-        const occupied = currentBalls.some(b => b.alive && b.row === r && b.col === c);
-        if (occupied) continue;
-        const { x, y } = getBallCenter(r, c, w);
-        const dist = Math.hypot(x - fb.x, y - fb.y);
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestRow = r;
-          bestCol = c;
-        }
+    for (const key of candidates) {
+      const [r, c] = key.split("-").map(Number);
+      if (occupiedSet.has(key)) continue;
+      const { x, y } = getBallCenter(r, c, w);
+      const dist = Math.hypot(x - fb.x, y - fb.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestRow = r;
+        bestCol = c;
       }
     }
     if (bestRow < 0) return currentBalls;
@@ -298,17 +308,16 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
         for (const b of currentBalls) {
           if (!b.alive) continue;
           const { x: bx, y: by } = getBallCenter(b.row, b.col, w);
-          if (Math.hypot(x - bx, y - by) < BALL_RADIUS * 2 - 2) {
+          if (Math.hypot(x - bx, y - by) < BALL_RADIUS * 2 + 2) {
             hitBall = b;
             break;
           }
         }
 
-        // Hit bottom of grid zone or ceiling
-        const topBall = currentBalls.filter(b => b.alive).reduce((min, b) => b.row < min ? b.row : min, 100);
-        const gridBottom = topBall === 100 ? 80 : 60 + (4 + 1) * (BALL_RADIUS * 2 + 2);
+        // Hit ceiling (top area where row 0 balls sit)
+        const hitCeiling = y - BALL_RADIUS < 60 + BALL_RADIUS;
 
-        if (hitBall || y - BALL_RADIUS < gridBottom) {
+        if (hitBall || hitCeiling) {
           const newBalls = snapAndExplode({ x, y, vx, vy, colorIdx }, currentBalls);
           setBalls(newBalls);
           setShots(s => s + 1);
