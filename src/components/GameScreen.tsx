@@ -495,11 +495,11 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
     // Doppelganger: add random to queue
     if (hasMod("doppelganger")) setQueue(q=>[...q,Math.floor(Math.random()*BALL_COLORS.length)]);
 
-    // Game over check
+    // Game over check: ball row must exceed the last locked row (TOTAL_ROWS - 1)
     const alive = updated.filter(b=>b.alive);
     if (alive.length===0) setWin(true);
     for (const b of alive) {
-      if ((b.row+desc)>=VISIBLE_ROWS+2) {setGameOver(true);break;}
+      if (b.row >= TOTAL_ROWS) {setGameOver(true);break;}
     }
 
     return {balls:updated,hp:newHp};
