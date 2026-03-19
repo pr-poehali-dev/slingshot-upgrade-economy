@@ -236,9 +236,10 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
   const introRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Refs for animation loop
-  const flyingRef   = useRef<FlyingBall|null>(null);
-  const ballsRef    = useRef<Ball[]>(balls);
-  const descentRef  = useRef(0);
+  const flyingRef      = useRef<FlyingBall|null>(null);
+  const ballsRef       = useRef<Ball[]>(balls);
+  const descentRef     = useRef(0);
+  const viewOffsetRef  = useRef(0);  // mirrors viewOffset for use inside callbacks
   const animRef     = useRef<number>();
   const modRef      = useRef(modifiers);
   const shieldRef   = useRef(false);
@@ -382,7 +383,7 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
     fb: FlyingBall, currentBalls: Ball[], currentHp: number, currentShielded: boolean
   ) => {
     const {w} = fieldSize;
-    const desc = descentRef.current;
+    const desc = viewOffsetRef.current;  // use same offset as rendering
     const occupied = new Set(currentBalls.filter(b=>b.alive).map(b=>`${b.row}-${b.col}`));
 
     // Ghost ball: skip to same-color ball
@@ -527,12 +528,12 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
         }
 
         const cb = ballsRef.current;
-        const desc = descentRef.current;
+        const vo = viewOffsetRef.current;  // same offset as rendering
         let hitBall: Ball|null = null;
         for (const b of cb) {
           if (!b.alive) continue;
           if (ghost && b.colorIdx!==colorIdx) continue;
-          const {x:bx,y:by}=getBallCenter(b.row,b.col,w,desc);
+          const {x:bx,y:by}=getBallCenter(b.row,b.col,w,vo);
           if (Math.hypot(x-bx,y-by)<BALL_RADIUS*2+2) {hitBall=b;break;}
         }
         const hitCeiling = !ghost && y-BALL_RADIUS<GRID_TOP+BALL_RADIUS;
@@ -698,8 +699,10 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
   // After intro: use descent (gameplay offset) anchored to last VISIBLE_LOCKED rows
   const lockedStart  = TOTAL_ROWS - VISIBLE_LOCKED; // row that should be at top when locked
   const viewOffset   = introPhase === "scrolling"
-    ? -cameraRow                        // scroll: show rows starting from 0 down to lockedStart
-    : descent - lockedStart;            // gameplay: keep bottom 7 rows in view
+    ? -cameraRow
+    : descent - lockedStart;
+  // Keep ref in sync so snapAndExplode and anim loop use the same value
+  viewOffsetRef.current = viewOffset;
 
   const aimPts = aimAngle!==null&&!flyingBall&&introPhase==="done"
     ? computeAimLine(w/2,h-60,aimAngle,w,isPrecision)
@@ -858,21 +861,17 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
           const isArmored=ball.modifier==="armored";
           const isMine=ball.modifier==="mine";
           const isAcid=ball.modifier==="acid";
-          // Fog logic
-          const showFull=!fogActive||(!!fogReveal&&Math.hypot(x-fogReveal.x,y-fogReveal.y)<BALL_RADIUS*6)||(hasBonus("clarity"));
           return (
             <div key={ball.id} className="absolute flex items-center justify-center pointer-events-none"
               style={{
                 left:x-r,top:y-r,width:r*2,height:r*2,borderRadius:"50%",
-                background:showFull
-                  ?`radial-gradient(circle at 35% 35%,${c.glow} 0%,${c.color} 60%,rgba(0,0,0,0.3) 100%)`
-                  :"radial-gradient(circle,#2a1a4a,#1a0d2e)",
+                background:`radial-gradient(circle at 35% 35%,${c.glow} 0%,${c.color} 60%,rgba(0,0,0,0.3) 100%)`,
                 boxShadow:isAcid?`0 0 10px #00ff88,0 0 20px #00cc6640`:`0 0 7px ${c.color}70,inset 0 0 5px rgba(255,255,255,0.12)`,
                 border:isArmored?"2.5px solid #C0C0C0":isMine?"2px solid #FF4500":isAcid?"2px solid #00ff88":`1.5px solid ${c.glow}45`,
                 fontSize:r*0.55,zIndex:3,
                 transition:"top 0.25s ease",
               }}>
-              {!showFull?"?":isMine?"💣":isArmored?(ball.armorHits===2?"🛡️":"⚠️"):isAcid?"🧪":c.label}
+              {isMine?"💣":isArmored?(ball.armorHits===2?"🛡️":"⚠️"):isAcid?"🧪":c.label}
             </div>
           );
         })}
@@ -913,12 +912,45 @@ export default function GameScreen({ onBack, levelName, levelNum }: GameScreenPr
           );
         })}
 
-        {/* Fog overlay */}
+        {/* Fog overlay — soft clouds, semi-transparent */}
         {fogActive&&(
-          <div className="absolute inset-0 pointer-events-none" style={{
-            background:fogReveal
-              ?`radial-gradient(circle ${BALL_RADIUS*6}px at ${fogReveal.x}px ${fogReveal.y}px,transparent 40%,rgba(5,3,16,0.85) 100%)`
-              :"rgba(5,3,16,0.85)",zIndex:6}}/>
+          <svg className="absolute inset-0 pointer-events-none" width={w} height={h} style={{zIndex:6}}>
+            <defs>
+              <filter id="fog-blur">
+                <feGaussianBlur stdDeviation="18"/>
+              </filter>
+              {fogReveal&&(
+                <radialGradient id="fog-reveal" cx={fogReveal.x/w} cy={fogReveal.y/h} r="0.22" gradientUnits="objectBoundingBox">
+                  <stop offset="0%" stopColor="white" stopOpacity="0"/>
+                  <stop offset="100%" stopColor="white" stopOpacity="1"/>
+                </radialGradient>
+              )}
+            </defs>
+            {/* Cloud blobs */}
+            {[
+              {x:w*0.12,y:h*0.08,rx:w*0.28,ry:h*0.10},
+              {x:w*0.55,y:h*0.05,rx:w*0.32,ry:h*0.09},
+              {x:w*0.80,y:h*0.16,rx:w*0.22,ry:h*0.10},
+              {x:w*0.25,y:h*0.22,rx:w*0.30,ry:h*0.11},
+              {x:w*0.70,y:h*0.30,rx:w*0.28,ry:h*0.10},
+              {x:w*0.10,y:h*0.40,rx:w*0.25,ry:h*0.09},
+              {x:w*0.50,y:h*0.44,rx:w*0.35,ry:h*0.10},
+              {x:w*0.85,y:h*0.50,rx:w*0.20,ry:h*0.09},
+              {x:w*0.30,y:h*0.58,rx:w*0.30,ry:h*0.10},
+              {x:w*0.68,y:h*0.64,rx:w*0.26,ry:h*0.09},
+              {x:w*0.12,y:h*0.72,rx:w*0.28,ry:h*0.10},
+              {x:w*0.55,y:h*0.78,rx:w*0.32,ry:h*0.09},
+            ].map((cl,i)=>(
+              <ellipse key={i} cx={cl.x} cy={cl.y} rx={cl.rx} ry={cl.ry}
+                fill="rgba(180,160,220,0.38)" filter="url(#fog-blur)"/>
+            ))}
+            {/* Reveal hole around last explosion */}
+            {fogReveal&&(
+              <ellipse cx={fogReveal.x} cy={fogReveal.y}
+                rx={BALL_RADIUS*7} ry={BALL_RADIUS*7}
+                fill="none" stroke="rgba(180,160,220,0.0)"/>
+            )}
+          </svg>
         )}
 
         {/* Combo */}
