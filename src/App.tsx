@@ -170,7 +170,7 @@ function LevelsPage({ onPlay }: { onPlay: (name: string, num: number) => void })
         <p className="font-cormorant text-sm" style={{ color: "rgba(212,175,55,0.5)" }}>Нажми на уровень чтобы играть</p>
       </div>
       {worlds.map((world, wi) => (
-        <div key={wi} className={`magic-card rounded-2xl p-4 animate-fade-in-up stagger-${wi + 1} opacity-0-init ${world.locked ? "opacity-50" : ""}`}>
+        <div key={wi} className={`magic-card rounded-2xl p-4 animate-fade-in-up stagger-${wi + 1} ${world.locked ? "opacity-50" : ""}`}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <span className="text-2xl">{world.icon}</span>
